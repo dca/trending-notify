@@ -1,0 +1,47 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Daily Update
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  run_and_notify:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.20'
+
+    - name: Run Go program
+      id: run-go
+      run: |
+        go run internal/main.go > result.json
+
+    - name: Parse result and send LINE notification
+      env:
+        LINE_TOKEN: ${{ secrets.LINE_NOTIFY_TOKEN }}
+      run: |
+        length=$(jq '. | length' result.json)
+    
+        for ((i=0;i<$length;i++)); do
+          message=$(jq -r ".[$i] | 
+                    \"repo: \(.Author) / \(.Name)\n\" +
+                    \"desc: \(.Desc)\n\" +
+                    \"stars: \(.Stars)\n\" +
+                    \"lang: \(.Lang)\n\" +
+                    \"link: \(.Link)\"" result.json)
+          
+          curl -X POST https://notify-api.line.me/api/notify \
+          -H "Authorization: Bearer $LINE_TOKEN" \
+          -d "message=$message"
+          
+          # Optional: Wait for a bit to avoid spamming too fast
+          sleep 1
+        done
